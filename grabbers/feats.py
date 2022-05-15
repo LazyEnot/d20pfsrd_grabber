@@ -1,12 +1,13 @@
 import requests
 import json
 
-from alive_progress import alive_bar
 from bs4 import BeautifulSoup
+from common import progress_bar
 from enum import Enum
 from pathlib import Path
 
 
+PB = progress_bar.draw_progress_bar
 FEATS_PAGE = "https://www.d20pfsrd.com/feats"
 FEAT_STRUCTURE_CATEGORIES = [
     "Benefit",
@@ -18,6 +19,7 @@ FEAT_STRUCTURE_CATEGORIES = [
     "Prerequisites",
     "Prerequisite(s)"
 ]
+_BROKEN_FEATS = "Here's a list of links that could not be reached:\n"
 
 
 class FeatsTables(Enum):
@@ -167,41 +169,55 @@ def grab_feats_other_links(feat_type: FeatsOther) -> list:
 
 
 def get_all_feats() -> None:
+    global _BROKEN_FEATS
     result = []
 
-    with alive_bar(len(FeatsTables),
-                   title=f"Finding links pt 1",
-                   force_tty=True) as bar:
-        for type_ in FeatsTables:
-            result += grab_feats_tables_links(type_)
-            bar()
+    # with alive_bar(len(FeatsTables),
+    #                title=f"Finding links pt 1",
+    #                force_tty=True) as bar:
+    # for type_ in PB(FeatsTables, prefix="Finding links pt 1"):
+    #     result += grab_feats_tables_links(type_)
+            # bar()
+    result += grab_feats_tables_links(FeatsTables.General)
 
-    with alive_bar(len(FeatsSubpages),
-                   title=f"Finding links pt 2",
-                   force_tty=True) as bar:
-        for type_ in FeatsSubpages:
-            result += grab_feats_subpage_links(type_)
-            bar()
+    # with alive_bar(len(FeatsSubpages),
+    #                title=f"Finding links pt 2",
+    #                force_tty=True) as bar:
+    # for type_ in PB(FeatsSubpages, prefix="Finding links pt 2"):
+    #     result += grab_feats_subpage_links(type_)
+            # bar()
 
-    with alive_bar(len(FeatsOther),
-                   title=f"Finding links pt 3",
-                   force_tty=True) as bar:
-        for type_ in FeatsOther:
-            result += grab_feats_other_links(type_)
-            bar()
+    # with alive_bar(len(FeatsOther),
+    #                title=f"Finding links pt 3",
+    #                force_tty=True) as bar:
+    # for type_ in PB(FeatsOther, prefix="Finding links pt 2"):
+    #     result += grab_feats_other_links(type_)
+            # bar()
 
-    Path("./results/feats").mkdir(parents=True, exist_ok=True)
-    with alive_bar(len(result),
-                   title=f"Grabbing feats",
-                   force_tty=True,
-                   stats=True) as bar:
-        for link, type_ in result:
-            feat = feat_presentation(link, type_)
-            bar()
-            file_path = Path(f"./results/feats/{feat['Name']}.json")
-            with open(file_path, mode="x") as f:
-                feat = json.dumps(feat)
-                f.write(feat)
+    # Path("./results/feats").mkdir(parents=True, exist_ok=True)
+    # with alive_bar(len(result),
+    #                title=f"Grabbing feats",
+    #                force_tty=True,
+    #                stats=True) as bar:
+    #     for link, type_ in result:
+    #         feat = feat_presentation(link, type_)
+    #         bar()
+    #         file_path = Path(f"./results/feats/{type_}/{feat['Name']}.json")
+    #         with open(file_path, mode="x") as f:
+    #             feat = json.dumps(feat)
+    #             f.write(feat)
+
+    # with alive_bar(len(result),
+    #                title=f"Grabbing feats",
+    #                force_tty=True,
+    #                stats=True) as bar:
+    for link, type_ in PB(result, prefix="Grabbing feats"):
+        feat = feat_presentation(link, type_)
+    print()
+    print(_BROKEN_FEATS)
+    _BROKEN_FEATS = "Here's a list of links that could not be reached:\n"
+            # bar()
+            # print(json.dumps(feat, indent=4))
 
 
 def feat_presentation(feat_link: str, feat_type: str) -> dict:
@@ -221,9 +237,16 @@ def feat_presentation(feat_link: str, feat_type: str) -> dict:
     """
     feat = {}
 
-    r = requests.get(feat_link, timeout=5.0)
+    r = requests.get(feat_link, timeout=10.0)
+    if r.status_code == 404:
+        page = BeautifulSoup(r.text, "html.parser").find("article")
+        correct_link = page.find("a")
+        if correct_link:
+            correct_link = correct_link["href"]
+            r = requests.get(correct_link, timeout=10.0)
+
     if not r:
-        print(f"\nSorry, timeout for link {feat_link} is exceeded\n")
+        _log_broken_feats(feat_link)
         return feat
 
     page = BeautifulSoup(r.text, "html.parser").find("article")
@@ -271,9 +294,11 @@ def feat_presentation(feat_link: str, feat_type: str) -> dict:
     feat["Prerequisites"] = []
     prerequisites = article.find(class_="Prerequisites")
     if prerequisites:
-        prerequisites = prerequisites.get_text()
-        prerequisites = prerequisites[14:-1] if prerequisites.endswith(".") \
-            else prerequisites[14:]
+        prerequisites = prerequisites.contents[2:]
+        prerequisites = "".join(str(item) for item in prerequisites)
+        # prerequisites = prerequisites.get_text()
+        prerequisites = prerequisites[:-1] if prerequisites.endswith(".") \
+            else prerequisites
         feat["Prerequisites"] = _parse_prerequisites(prerequisites)
 
     benefit = ""
@@ -330,8 +355,25 @@ def _parse_prerequisites(prerequisites: str) -> list:
     return result
 
 
+def _log_broken_feats(link: str) -> None:
+    global _BROKEN_FEATS
+    _BROKEN_FEATS += link
+    _BROKEN_FEATS += "\n"
+
+
 def _get_prereq_type_value(prereq: str) -> dict:
     result = {}
+    feat_type = ""
+    feat_name = ""
+    parsed_prereq = BeautifulSoup(prereq, "html.parser")
+    prereq_link = parsed_prereq.a
+    if prereq_link:
+        # 25 is number of characters in https://www.d20pfsrd.com/
+        href = prereq_link["href"][25:]
+        feat_type = href[:href.find("/")]
+        feat_name = prereq_link.get_text()
+    prereq = parsed_prereq.get_text()
+
 
     if prereq.lower().endswith(" class feature"):
         result["ClassFeaturePrerequisite"] = prereq[:-14]
@@ -384,13 +426,19 @@ def _get_prereq_type_value(prereq: str) -> dict:
         result["CasterLvlPrerequisite"] = prereq[space+1:]
         return result
 
-    if prereq.lower().find(" level ") != -1:
+    if prereq.lower().startswith("character level "):
         start_space = prereq.find(" ")
         end_space = prereq.rfind(" ")
         result["ClassLvlPrerequisite"] = {}
         result["ClassLvlPrerequisite"]["Class"] = prereq[:start_space]
         result["ClassLvlPrerequisite"]["Level"] = prereq[end_space+1:]
         return result
+
+    if feat_type == "classes":
+        end_space = prereq.rfind(" ")
+        result["ClassLvlPrerequisite"] = {}
+        result["ClassLvlPrerequisite"]["Class"] = feat_name
+        result["ClassLvlPrerequisite"]["Level"] = prereq[end_space + 1:]
 
     if prereq.startswith("Acrobatics "):
         if prereq.endswith(" ranks"):
@@ -717,11 +765,11 @@ def _get_prereq_type_value(prereq: str) -> dict:
         result["UseMagicDevicePrerequisite"] = prereq[space+1:]
         return result
 
-    if prereq[0].isupper():
-        result["FeatPrerequisite"] = prereq
+    if feat_type == "feats":
+        result["FeatPrerequisite"] = feat_name
         return result
 
-    if prereq.islower():
+    if feat_type == "races" or feat_type == "bestiary":
         result["RacePrerequisite"] = prereq
         return result
 
