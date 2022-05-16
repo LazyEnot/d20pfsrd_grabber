@@ -19,7 +19,7 @@ FEAT_STRUCTURE_CATEGORIES = [
     "Prerequisites",
     "Prerequisite(s)"
 ]
-_BROKEN_FEATS = "Here's a list of links that could not be reached:\n"
+_BROKEN_FEATS = ""
 
 
 class FeatsTables(Enum):
@@ -169,71 +169,51 @@ def grab_feats_other_links(feat_type: FeatsOther) -> list:
 
 
 def get_all_feats() -> None:
+    """
+    Just get all available feats and save them to JSONs using feat_output()
+    """
     global _BROKEN_FEATS
     result = []
 
-    # with alive_bar(len(FeatsTables),
-    #                title=f"Finding links pt 1",
-    #                force_tty=True) as bar:
-    # for type_ in PB(FeatsTables, prefix="Finding links pt 1"):
-    #     result += grab_feats_tables_links(type_)
-            # bar()
-    result += grab_feats_tables_links(FeatsTables.General)
+    for type_ in PB(FeatsTables, prefix="Finding links pt 1"):
+        result += grab_feats_tables_links(type_)
 
-    # with alive_bar(len(FeatsSubpages),
-    #                title=f"Finding links pt 2",
-    #                force_tty=True) as bar:
-    # for type_ in PB(FeatsSubpages, prefix="Finding links pt 2"):
-    #     result += grab_feats_subpage_links(type_)
-            # bar()
+    for type_ in PB(FeatsSubpages, prefix="Finding links pt 2"):
+        result += grab_feats_subpage_links(type_)
 
-    # with alive_bar(len(FeatsOther),
-    #                title=f"Finding links pt 3",
-    #                force_tty=True) as bar:
-    # for type_ in PB(FeatsOther, prefix="Finding links pt 2"):
-    #     result += grab_feats_other_links(type_)
-            # bar()
+    for type_ in PB(FeatsOther, prefix="Finding links pt 2"):
+        result += grab_feats_other_links(type_)
 
-    # Path("./results/feats").mkdir(parents=True, exist_ok=True)
-    # with alive_bar(len(result),
-    #                title=f"Grabbing feats",
-    #                force_tty=True,
-    #                stats=True) as bar:
-    #     for link, type_ in result:
-    #         feat = feat_presentation(link, type_)
-    #         bar()
-    #         file_path = Path(f"./results/feats/{type_}/{feat['Name']}.json")
-    #         with open(file_path, mode="x") as f:
-    #             feat = json.dumps(feat)
-    #             f.write(feat)
-
-    # with alive_bar(len(result),
-    #                title=f"Grabbing feats",
-    #                force_tty=True,
-    #                stats=True) as bar:
     for link, type_ in PB(result, prefix="Grabbing feats"):
-        feat = feat_presentation(link, type_)
+        feat = build_feat(link, type_)
+        if feat:
+            feat_output(feat, type_)
     print()
-    print(_BROKEN_FEATS)
-    _BROKEN_FEATS = "Here's a list of links that could not be reached:\n"
-            # bar()
-            # print(json.dumps(feat, indent=4))
+    if _BROKEN_FEATS:
+        print("Here's a list of links that could not be reached:\n" +
+              _BROKEN_FEATS)
+        _BROKEN_FEATS = ""
 
 
-def feat_presentation(feat_link: str, feat_type: str) -> dict:
+def build_feat(feat_link: str, feat_type: str) -> dict:
     """
-    type Feat struct {
-       Name          string
-       Type          string
-       Benefit       string
-       Description   string
-       Normal        string
-       Special       string
-       Source        string
-       SourceLink    string
-       Link          string
-       Prerequisites []Prerequisite
-    }
+    Grabs a feat using provided link and
+    builds dict with all of feat's contents
+
+    :param feat_link: URL to grab the feat
+    :param feat_type: Type of feat for later usage
+    :return:   {
+                   Name          string
+                   Type          string
+                   Benefit       string
+                   Description   string
+                   Normal        string
+                   Special       string
+                   Source        string
+                   SourceLink    string
+                   Link          string
+                   Prerequisites [dicts]
+                }
     """
     feat = {}
 
@@ -249,10 +229,13 @@ def feat_presentation(feat_link: str, feat_type: str) -> dict:
         _log_broken_feats(feat_link)
         return feat
 
-    page = BeautifulSoup(r.text, "html.parser").find("article")
+    page = BeautifulSoup(r.content, "html.parser").find("article")
     article = page.find(class_="article-content")
 
-    feat["Name"] = page.h1.get_text()
+    name = page.h1.get_text()
+    if name.find("/") != -1:
+        name = name.replace("/", ", ")
+    feat["Name"] = name
     feat["Type"] = feat_type
     feat["Link"] = feat_link
 
@@ -294,12 +277,21 @@ def feat_presentation(feat_link: str, feat_type: str) -> dict:
     feat["Prerequisites"] = []
     prerequisites = article.find(class_="Prerequisites")
     if prerequisites:
-        prerequisites = prerequisites.contents[2:]
-        prerequisites = "".join(str(item) for item in prerequisites)
-        # prerequisites = prerequisites.get_text()
-        prerequisites = prerequisites[:-1] if prerequisites.endswith(".") \
-            else prerequisites
-        feat["Prerequisites"] = _parse_prerequisites(prerequisites)
+        prerequisites = prerequisites.contents
+
+        if len(prerequisites) > 2:
+            prerequisites = "".join(str(item) for item in prerequisites)
+            semicolon = prerequisites.find(": ")
+            prerequisites = prerequisites[semicolon+2:]
+            prerequisites = prerequisites[:-1] if prerequisites.endswith(".") \
+                else prerequisites
+            feat["Prerequisites"] = _parse_prerequisites(prerequisites)
+        elif len(prerequisites) == 2:
+            prerequisites = BeautifulSoup(str(prerequisites[1]), "html.parser")
+            prerequisites = prerequisites.get_text()
+            feat["Prerequisites"].append(
+                {"SpecialPrerequisite": prerequisites[2:]}
+            )
 
     benefit = ""
     benefit_tags = article.find_all(class_="Benefit")
@@ -328,6 +320,28 @@ def feat_presentation(feat_link: str, feat_type: str) -> dict:
     return feat
 
 
+def feat_output(feat: dict, type_: str, method="JSON") -> None:
+    """
+    Function for feat output
+
+    :param feat: Dictionary from build_feat() function
+    :param type_: String with Feat Type
+    :param method: Either "JSON" (main) or "Print" (for debugging).
+                   If "JSON", then creates file in
+                      d20pfsrd_grabber/results/feats/{type_}/{feat name}.json
+                   If "Print", then simply outputs to console
+    """
+    if method == "JSON":
+        Path(f"./results/feats/{type_}").mkdir(parents=True, exist_ok=True)
+        file_path = Path(f"./results/feats/{type_}/{feat['Name']}.json")
+        with open(file_path, mode="w", encoding="utf8") as f:
+            json.dump(feat, f, ensure_ascii=False)
+
+    if method == "Print":
+        print()
+        print(json.dumps(feat, indent=4, ensure_ascii=False))
+
+
 def _parse_prerequisites(prerequisites: str) -> list:
     result = []
     prereq_list = [p.strip().split(",") for p in prerequisites.split(";")]
@@ -337,8 +351,9 @@ def _parse_prerequisites(prerequisites: str) -> list:
         if skip:
             skip = False
             continue
+        # MultiPrerequisite if "or" in the next item
         if count < (len(prereq_list)-1) and \
-                prereq_list[count+1].startswith("or"):
+                prereq_list[count+1].startswith("or "):
             skip = True
             temp = {"MultiPrerequisite": []}
             temp["MultiPrerequisite"].append(
@@ -349,8 +364,47 @@ def _parse_prerequisites(prerequisites: str) -> list:
             )
             result.append(temp)
             continue
+        # MultiPrerequisite if "or" in the same item
+        if prereq.find(" or ") != -1:
+            prereq = prereq.split(" or ")
+            temp = {"MultiPrerequisite": []}
+            temp["MultiPrerequisite"].append(
+                _get_prereq_type_value(prereq[0])
+            )
+            temp["MultiPrerequisite"].append(
+                _get_prereq_type_value(prereq[1])
+            )
+            result.append(temp)
+            continue
 
         result.append(_get_prereq_type_value(prereq))
+
+    # Basically puts every SpecialPrerequisite into one
+    is_special = False
+    for item in result:
+        if "SpecialPrerequisite" in item.keys() or \
+                "MultiPrerequisite" in item.keys():
+            if "SpecialPrerequisite" in \
+                    item["MultiPrerequisite"][0].keys() and \
+                    "SpecialPrerequisite" in \
+                    item["MultiPrerequisite"][1].keys():
+                is_special = True
+    if is_special:
+        special_result = ""
+        for item in result:
+            if "SpecialPrerequisite" in item.keys():
+                special_result += item["SpecialPrerequisite"] + ", "
+            if "MultiPrerequisite" in item.keys():
+                if "SpecialPrerequisite" in \
+                        item["MultiPrerequisite"][0].keys() and \
+                        "SpecialPrerequisite" in \
+                        item["MultiPrerequisite"][1].keys():
+                    special_result += item["MultiPrerequisite"][0][
+                                          "SpecialPrerequisite"] + ", " + \
+                                      item["MultiPrerequisite"][1][
+                                          "SpecialPrerequisite"] + ", "
+        special_result = special_result[:-2]
+        result = [{"SpecialPrerequisite": special_result}]
 
     return result
 
@@ -373,7 +427,6 @@ def _get_prereq_type_value(prereq: str) -> dict:
         feat_type = href[:href.find("/")]
         feat_name = prereq_link.get_text()
     prereq = parsed_prereq.get_text()
-
 
     if prereq.lower().endswith(" class feature"):
         result["ClassFeaturePrerequisite"] = prereq[:-14]
@@ -439,6 +492,7 @@ def _get_prereq_type_value(prereq: str) -> dict:
         result["ClassLvlPrerequisite"] = {}
         result["ClassLvlPrerequisite"]["Class"] = feat_name
         result["ClassLvlPrerequisite"]["Level"] = prereq[end_space + 1:]
+        return result
 
     if prereq.startswith("Acrobatics "):
         if prereq.endswith(" ranks"):
@@ -767,6 +821,10 @@ def _get_prereq_type_value(prereq: str) -> dict:
 
     if feat_type == "feats":
         result["FeatPrerequisite"] = feat_name
+        return result
+
+    if prereq.lower().endswith(" feat"):
+        result["FeatPrerequisite"] = prereq[:-5]
         return result
 
     if feat_type == "races" or feat_type == "bestiary":

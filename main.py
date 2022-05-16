@@ -1,8 +1,8 @@
-from grabbers.feats import *
+from grabbers import feats
 
 
 def main():
-    get_all_feats()
+    feats.get_all_feats()
 
 
 if __name__ == "__main__":
