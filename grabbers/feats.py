@@ -19,6 +19,71 @@ FEAT_STRUCTURE_CATEGORIES = [
     "Prerequisites",
     "Prerequisite(s)"
 ]
+PREREQUISITES_SAMPLE = [
+    {"ClassFeaturePrerequisite": "value"},
+    {"StrPrerequisite": "value"},
+    {"DexPrerequisite": "value"},
+    {"ConPrerequisite": "value"},
+    {"IntPrerequisite": "value"},
+    {"WisPrerequisite": "value"},
+    {"ChaPrerequisite": "value"},
+    {"BabPrerequisite": "value"},
+    {"CasterLvlPrerequisite": "value"},
+    {"AcrobaticsPrerequisite": "value"},
+    {"AppraisePrerequisite": "value"},
+    {"BluffPrerequisite": "value"},
+    {"ClimbPrerequisite": "value"},
+    {"CraftPrerequisite": "value"},
+    {"DiplomacyPrerequisite": "value"},
+    {"DisableDevicePrerequisite": "value"},
+    {"DisguisePrerequisite": "value"},
+    {"EscapeArtistPrerequisite": "value"},
+    {"FlyPrerequisite": "value"},
+    {"HandleAnimalPrerequisite": "value"},
+    {"HealPrerequisite": "value"},
+    {"IntimidatePrerequisite": "value"},
+    {"KnowledgeArcanaPrerequisite": "value"},
+    {"KnowledgeDungeoneeringPrerequisite": "value"},
+    {"KnowledgeEngineeringPrerequisite": "value"},
+    {"KnowledgeGeographyPrerequisite": "value"},
+    {"KnowledgeHistoryPrerequisite": "value"},
+    {"KnowledgeLocalPrerequisite": "value"},
+    {"KnowledgeNaturePrerequisite": "value"},
+    {"KnowledgeNobilityPrerequisite": "value"},
+    {"KnowledgePlanesPrerequisite": "value"},
+    {"KnowledgeReligionPrerequisite": "value"},
+    {"LinguisticsPrerequisite": "value"},
+    {"PerceptionPrerequisite": "value"},
+    {"PerformPrerequisite": "value"},
+    {"ProfessionPrerequisite": "value"},
+    {"RidePrerequisite": "value"},
+    {"SenseMotivePrerequisite": "value"},
+    {"SleightOfHandPrerequisite": "value"},
+    {"SpellcraftPrerequisite": "value"},
+    {"StealthPrerequisite": "value"},
+    {"SurvivalPrerequisite": "value"},
+    {"SwimPrerequisite": "value"},
+    {"UseMagicDevicePrerequisite": "value"},
+    {"FeatPrerequisite": "value"},
+    {"RacePrerequisite": "value"},
+    {"SpecialPrerequisite": "value"},
+
+    {
+        "ClassFeaturePrerequisite":
+        {
+            "Class": "value",
+            "Level": "value"
+        }
+    },
+
+    {
+        "MultiPrerequisite":
+        [
+            {"Prerequisite": "value"},
+            {"Prerequisite": "value"},
+        ]
+    }
+]
 _BROKEN_FEATS = ""
 
 
@@ -536,7 +601,7 @@ def _get_prereq_type_value(prereq: str) -> dict:
         if prereq.endswith(" rank"):
             prereq = prereq[:-5]
         space = prereq.rfind(" ")
-        result["BluffPrerequisite"] = prereq[space+1:]
+        result["CraftPrerequisite"] = prereq[space+1:]
         return result
 
     if prereq.startswith("Diplomacy "):
@@ -563,7 +628,7 @@ def _get_prereq_type_value(prereq: str) -> dict:
         if prereq.endswith(" rank"):
             prereq = prereq[:-5]
         space = prereq.rfind(" ")
-        result["BluffPrerequisite"] = prereq[space+1:]
+        result["DisguisePrerequisite"] = prereq[space+1:]
         return result
 
     if prereq.lower().startswith("escape artist "):
